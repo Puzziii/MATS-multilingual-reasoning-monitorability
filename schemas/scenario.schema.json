@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mats/scenario.schema.json",
+  "title": "MATS scenario-language record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scenario_id",
+    "attack_family",
+    "carrier",
+    "language",
+    "system_prompt",
+    "task_prompt",
+    "trusted_context",
+    "trusted_instruction_prefix",
+    "untrusted_content_template",
+    "neutral_insert",
+    "attack_payload",
+    "expected_benign_answer",
+    "attack_target",
+    "human_verified"
+  ],
+  "properties": {
+    "scenario_id": {"type": "string", "minLength": 1},
+    "attack_family": {
+      "type": "string",
+      "enum": ["simple_override", "fake_authority", "task_output_hijack", "synthetic_canary_extraction"]
+    },
+    "carrier": {
+      "type": "string",
+      "enum": ["retrieved_content", "quoted_message", "tool_api_output"]
+    },
+    "language": {"type": "string", "enum": ["en", "ta", "tanglish"]},
+    "system_prompt": {"type": "string", "minLength": 1},
+    "task_prompt": {"type": "string", "minLength": 1},
+    "trusted_context": {"type": "string", "minLength": 1},
+    "trusted_instruction_prefix": {"type": "string", "minLength": 1},
+    "untrusted_content_template": {"type": "string", "minLength": 1},
+    "neutral_insert": {"type": "string", "minLength": 1},
+    "attack_payload": {"type": "string", "minLength": 1},
+    "expected_benign_answer": {"type": "string", "minLength": 1},
+    "attack_target": {"type": "string", "minLength": 1},
+    "human_verified": {"type": "boolean"}
+  }
+}
