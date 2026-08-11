@@ -73,6 +73,11 @@ def _git_state(*, clean: bool = True, protocol_ancestor: bool = True) -> pilot_r
     )
 
 
+@pytest.fixture(autouse=True)
+def harmless_live_credential(monkeypatch):
+    monkeypatch.setenv("SARVAM_API_KEY", "fake-test-credential")
+
+
 @pytest.fixture
 def plan():
     return pilot_run.build_plan(
@@ -209,6 +214,93 @@ def test_preflight_failure_blocks_before_provider_or_api_key_access(monkeypatch)
     monkeypatch.setattr(pilot_run, "build_plan", blocked_plan)
     assert pilot_run.main(["--execute-live-pilot"], provider_factory=forbidden_provider) == 2
     assert calls == []
+
+
+@pytest.mark.parametrize(("mode", "credential"), [("--execute-live-pilot", None), ("--resume-live-pilot", " \t ")])
+def test_missing_or_blank_live_credential_blocks_before_artifact_or_provider(
+    monkeypatch, capsys, plan, mode, credential
+):
+    provider_calls = []
+    run_calls = []
+    append_calls = []
+
+    def fake_plan(*args, **kwargs):
+        assert kwargs["require_clean_worktree"] is True
+        return plan
+
+    def forbidden_provider(*args, **kwargs):
+        provider_calls.append((args, kwargs))
+        raise AssertionError("provider must not be constructed without a credential")
+
+    def forbidden_run(*args, **kwargs):
+        run_calls.append((args, kwargs))
+        raise AssertionError("artifact execution must not start without a credential")
+
+    monkeypatch.setattr(pilot_run, "build_plan", fake_plan)
+    monkeypatch.setattr(pilot_run, "run_fresh", forbidden_run)
+    monkeypatch.setattr(pilot_run, "run_resume", forbidden_run)
+    monkeypatch.setattr(pilot_run, "_append_event", lambda *args, **kwargs: append_calls.append(args))
+    if credential is None:
+        monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("SARVAM_API_KEY", credential)
+
+    assert pilot_run.main([mode], provider_factory=forbidden_provider) == 2
+    assert provider_calls == []
+    assert run_calls == []
+    assert append_calls == []
+    assert not pilot_run.PILOT_OUTPUT_PATH.exists()
+    assert "credential" not in capsys.readouterr().out.lower()
+
+
+def test_run_fresh_missing_credential_creates_no_artifact_or_request(plan, tmp_path, monkeypatch):
+    output_path = tmp_path / "pilot_results.jsonl"
+    provider = FakeProvider()
+    runtime, _ = _runtime(provider)
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    with pytest.raises(pilot_run.PreflightError, match="configured credential"):
+        pilot_run.run_fresh(plan, runtime=runtime, output_path=output_path)
+    assert not output_path.exists()
+    assert provider.calls == []
+
+
+def test_nonempty_live_credential_allows_mocked_execution_after_preflight(monkeypatch, plan):
+    provider_calls = []
+    run_calls = []
+
+    class FakeLiveProvider:
+        def generate(self, call):
+            raise AssertionError("mocked execution helper should not invoke transport")
+
+    provider = FakeLiveProvider()
+
+    def fake_plan(*args, **kwargs):
+        assert kwargs["require_clean_worktree"] is True
+        return plan
+
+    def fake_provider_factory(*, allow_network, timeout):
+        provider_calls.append({"allow_network": allow_network, "timeout": timeout})
+        return provider
+
+    def fake_run(received_plan, *, runtime):
+        run_calls.append((received_plan, runtime.transport))
+        return 48
+
+    monkeypatch.setenv("SARVAM_API_KEY", "fake-nonempty-test-key")
+    monkeypatch.setattr(pilot_run, "build_plan", fake_plan)
+    monkeypatch.setattr(pilot_run, "run_fresh", fake_run)
+    assert pilot_run.main(["--execute-live-pilot"], provider_factory=fake_provider_factory) == 0
+    assert provider_calls == [{"allow_network": True, "timeout": 120.0}]
+    assert len(run_calls) == 1
+
+
+def test_offline_preview_does_not_check_or_read_live_credential(monkeypatch, capsys):
+    def forbidden_credential_check():
+        raise AssertionError("offline preview must not inspect the live credential")
+
+    monkeypatch.setattr(pilot_run, "_require_live_credential", forbidden_credential_check)
+    assert pilot_run.main([]) == 0
+    assert "offline preview" in capsys.readouterr().out
 
 
 def test_fresh_run_writes_fsynced_manifest_before_transport_and_never_exceeds_48_calls(

@@ -478,6 +478,7 @@ def run_fresh(
     run_id_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
 ) -> int:
     """Write the first manifest and execute the complete fixed plan exactly once."""
+    _require_live_credential()
     if output_path.exists():
         raise PilotRunError("fresh pilot run refuses to use an existing output artifact")
     run_id = run_id_factory()
@@ -601,6 +602,7 @@ def run_resume(
     output_path: Path = PILOT_OUTPUT_PATH,
 ) -> int:
     """Resume only a verified, completed prefix; never repeat an uncertain call."""
+    _require_live_credential()
     events = _load_jsonl_artifact(output_path)
     run_id, pending, last_start_epoch = _resume_state(plan, events)
     return _execute_remaining(
@@ -632,6 +634,13 @@ def offline_preview(plan: PilotPlan) -> str:
     )
 
 
+def _require_live_credential() -> None:
+    """Fail before any live artifact or provider action when the key is unusable."""
+    api_key = os.environ.get("SARVAM_API_KEY")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise PreflightError("live pilot execution requires a configured credential")
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -649,8 +658,9 @@ def main(
         if not live:
             print(offline_preview(plan))
             return 0
-        # SarvamProvider deliberately reads SARVAM_API_KEY only inside its live
-        # transport, after all preflight checks above have passed.
+        _require_live_credential()
+        # SarvamProvider retains its own credential check immediately before
+        # HTTPS transport as defence in depth.
         provider = provider_factory(allow_network=True, timeout=TIMEOUT_SECONDS)
         runtime = Runtime(transport=provider.generate)
         completed = (
