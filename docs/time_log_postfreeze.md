@@ -11,5 +11,6 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-11 | Phase 3B guarded pilot runner implementation and review | 16:11:48 | 16:31:13 | 19 | 309 | 5.15 | Exact active work; passive waiting excluded. |
 | 2026-08-11 | Pilot attempt 1 preflight, failure inspection, and forensic diagnosis | 16:48:51 | 17:24:16 | 35 | 344 | 5.73 | Active work; no genuinely unattended API wait was excluded. |
 | 2026-08-11 | Attempt 2 credential-preflight preparation and review | 18:14:37 | 18:23:07 | 8 | 352 | 5.87 | Exact active work; passive waiting excluded. |
+| 2026-08-11 | Pilot attempt 2 live execution and incident review | 18:37:00 | 18:57:00 | 20 | 372 | 6.20 | Live pilot run, offline diagnosis of empty reasoning schema violation, incident report. |
 
-Current cumulative active time: **352 minutes (5.87 hours)**.
+Current cumulative active time: **372 minutes (6.20 hours)**.
