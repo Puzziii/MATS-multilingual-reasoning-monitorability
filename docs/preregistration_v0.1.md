@@ -1,6 +1,6 @@
 # Preregistration v0.1 — Multilingual Reasoning Monitorability Under Indirect Prompt Injection
 
-**Status:** Draft for human review; not yet frozen  
+**Status:** Frozen v1.0 — 2026-08-11T15:23:23+00:00
 **Created:** 2026-08-11 12:00 IST  
 **Applicant:** Madhusudhanan G  
 **Current test model:** Sarvam-105B via API  
@@ -257,6 +257,20 @@ The pilot contains one scenario from each attack family and covers all three lan
 
 The full English, Tamil, and Tanglish wording must be reviewed and frozen in a separate scenario file before the pilot. These pilot descriptions specify semantics, not final prompt wording.
 
+### Non-study schema-smoke gate
+
+- Timestamp: `2026-08-11T14:51:01.571973+00:00`
+- Request: fixed non-study English arithmetic prompt (`17 * 24 - 29`); not P1–P4.
+- Network calls: exactly one.
+- Returned model: `sarvam-105b`
+- Final content: `379`
+- `finish_reason`: `stop`
+- Visible reasoning characters: `434`
+- Usage: `prompt_tokens=46`, `completion_tokens=143`, `total_tokens=189`
+- Gate verdict: **PASS**
+- Artifact: `outputs/schema_smoke.jsonl`, SHA-256 `6185ab95775a4aaf5f96223b8301e8bf967e27d7509cea508e48765ccf145cff`.
+- This smoke call is explicitly excluded from pilot data and all statistical analysis. No prompts or hypotheses changed after viewing it.
+
 ## 15. Pilot decision rules
 
 Continue to the full experiment only if:
@@ -272,6 +286,25 @@ If a threshold fails because of wording or translation, revise the affected prom
 If `reasoning_content` is consistently absent or unusable, stop this project early rather than silently converting it into a different study.
 
 ## 16. Reproducibility and storage
+
+### Fixed provider configuration
+
+- Endpoint: `POST https://api.sarvam.ai/v1/chat/completions`
+- Model: `sarvam-105b`
+- Authentication: `api-subscription-key` header; it is never persisted.
+- `temperature`: `0.0`
+- `top_p`: `1.0`
+- `max_tokens`: `2048`
+- `seed`: `1729`
+- `n`: `1`
+- `stream`: `false`
+- `frequency_penalty`: `0`
+- `presence_penalty`: `0`
+- `wiki_grounding`: `false`
+- Think mode: `reasoning_effort="medium"`
+- Non-think mode: `reasoning_effort=null`
+- Final response field: `choices[0].message.content`
+- Visible reasoning field: `choices[0].message.reasoning_content`
 
 - Freeze scenario IDs, prompts, targets, expected answers, and language labels in version control.
 - Store request parameters, response timestamp, model identifier, latency, raw final text, and raw visible reasoning.
@@ -334,14 +367,16 @@ Record actual active time rather than planned calendar time.
 | 2026-08-11 | Live schema smoke execution and review | 20:18 | 20:23 | 5 | 0.08 | Verify live API connection, reasoning extraction, and credential sanitization |
 | 2026-08-11 | Tanglish P1-P4 authoring and structural validation | 19:07 | 19:15 | 8 | 0.80 | Separate review file; all Tanglish records remain unverified |
 | 2026-08-11 | Phase 2A Sarvam transport and schema-smoke implementation | 19:52 | 20:08 | 16 | 1.07 | Mocked offline tests and previews only; no live API call |
+| 2026-08-11 | Preregistration review, research design and pilot planning |  |  | 60 | 2.30 | reconstructed estimate from chat history and personal recollection. |
+| 2026-08-11 | Initial Phase 1 scaffold, validation and test review |  |  | 60 | 3.30 | reconstructed estimate from chat history and personal recollection. |
+| 2026-08-11 | Phase 1.1 corrections and review |  |  | 30 | 3.80 | reconstructed estimate from chat history and personal recollection. |
+| 2026-08-11 | Phase 1.2 safety cleanup, verification and archive work |  |  | 30 | 4.30 | reconstructed estimate from chat history and personal recollection. |
+| 2026-08-11 | P4 semantic correction, English approval and checkpoint housekeeping |  |  | 30 | 4.80 | reconstructed estimate from chat history and personal recollection. |
 
-## 21. Decisions required before freezing v1.0
+True cumulative active time at freeze: **288 minutes (4.80 hours)**. This total comprises 78 minutes from existing exact entries and 210 minutes from the five reconstructed estimates; existing exact entries remain unchanged.
 
-1. Confirm the four attack-family definitions and three carrier types.
-2. Confirm `attack_present` as the primary behavioural failure metric.
-3. Confirm the provisional priority rules for the 36-call reserve.
-4. Verify Sarvam's exact thinking-mode request field and returned response schema with one smoke call.
-5. Write and manually approve the exact English, Tamil, and Tanglish pilot prompts.
-6. Record the actual project-specific time already spent before this document was created.
+## 21. Pre-experiment freeze declaration
 
-No core experiment should begin until these decisions are resolved and this document is marked **Frozen v1.0**.
+This preregistration is **Frozen v1.0** as of `2026-08-11T15:23:23+00:00`, before pilot collection.
+
+The approved prompts, hypotheses, conditions, primary metrics, exclusions, and analysis rules are fixed before pilot collection. Any subsequent change will be documented and treated as exploratory rather than part of the frozen core.
