@@ -37,16 +37,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PILOT_DATA_PATH = PROJECT_ROOT / "data" / "pilot_scenarios.jsonl"
 PREREGISTRATION_PATH = PROJECT_ROOT / "docs" / "preregistration_v0.1.md"
 EXECUTION_PROTOCOL_PATH = PROJECT_ROOT / "docs" / "execution_protocol_v1.0.md"
+RESUME_DEVIATION_PATH = PROJECT_ROOT / "docs" / "pilot_attempt_2_resume_deviation.md"
 PILOT_OUTPUT_PATH = PROJECT_ROOT / "outputs" / "pilot_results.jsonl"
 
 PREREGISTRATION_TAG = "prereg-v1.0"
 PREREGISTRATION_COMMIT = "196f5bcb3ba9589490b1429ca7558085e5682d14"
 EXECUTION_PROTOCOL_TAG = "execution-protocol-v1.0"
 EXECUTION_PROTOCOL_COMMIT = "94f985bf45760d318073ed73bbd4c7892a7a5cff"
+RESUME_DEVIATION_TAG = "pilot-resume-deviation-v1.0"
+RESUME_DEVIATION_COMMIT = "d2236f3ecd6521f546e666adeef155be080e9f35"
 
 PREREGISTRATION_SHA256 = "5d9c9fd877e391fe9f6c38bccc8eed9cc829e19e2f05c83bb04c95c548555f77"
 PILOT_DATA_SHA256 = "1782cdfdcc0c27cbf48b579809d64cf4fc14b4a8f4d03820ce75baa9dddbac4a"
 EXECUTION_PROTOCOL_SHA256 = "904b6c93f61ad4797369f25d3075f66c25f48d0b1d38003c5b2cf49a938f7739"
+RESUME_DEVIATION_SHA256 = "edd2e382cc5569517c3231ed99460ee3c0be07a12d129b00778797fdb86145d2"
+PRE_RESUME_ARTIFACT_SHA256 = "43268dfcfdd4761aa64718a69b77f17db9bce344f7daef14eba7d770d1c5a64c"
+CONSUMED_CALL_ID = "P3:tanglish:injected_think"
+CONSUMED_FAILURE_ERROR_TYPE = "SarvamResponseError"
+CONSUMED_FAILURE_ERROR_MESSAGE = "Sarvam think response requires non-empty reasoning_content"
+PRE_RESUME_ATTEMPTS = 12
+PRE_RESUME_SUCCESSES = 11
 
 EXECUTION_ORDER_SEED = 20260811
 TIMEOUT_SECONDS = 120.0
@@ -99,6 +109,17 @@ class ResumeError(PilotRunError):
 
 class PilotExecutionHalted(PilotRunError):
     """Raised after a terminal provider failure is durably recorded."""
+
+
+@dataclass(frozen=True)
+class ResumeState:
+    run_id: str
+    pending_calls: tuple[ConditionCall, ...]
+    last_start_epoch: float | None
+    prior_attempts: int
+    prior_successes: int
+    total_attempts: int
+    authorization_present: bool
 
 
 @dataclass(frozen=True)
@@ -425,11 +446,12 @@ def _execute_remaining(
     output_path: Path,
     run_id: str,
     runtime: Runtime,
+    attempts_already_consumed: int = 0,
     last_start_epoch: float | None = None,
 ) -> int:
     """Execute a planned suffix sequentially, stopping permanently on any error."""
-    if len(pending_calls) > MAXIMUM_NETWORK_ATTEMPTS:
-        raise PilotRunError("pending calls exceed the frozen maximum")
+    if attempts_already_consumed < 0 or attempts_already_consumed + len(pending_calls) > MAXIMUM_NETWORK_ATTEMPTS:
+        raise PilotRunError("planned execution exceeds the frozen maximum")
     completed = 0
     for call in pending_calls:
         request_start_epoch = _wait_for_request_start(last_start_epoch, runtime)
@@ -512,6 +534,32 @@ def _load_jsonl_artifact(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def _pre_resume_artifact_sha256(path: Path) -> str:
+    """Hash exactly the preserved pre-resume prefix, excluding authorization/events."""
+    if not path.exists():
+        raise ResumeError("resume requires the original output artifact")
+    prefix = bytearray()
+    try:
+        for number, line in enumerate(path.read_bytes().splitlines(keepends=True), start=1):
+            value = json.loads(line.decode("utf-8"))
+            if not isinstance(value, dict):
+                raise ResumeError(f"artifact event {number} is not an object")
+            if value.get("event_type") == "resume_authorization":
+                break
+            prefix.extend(line)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ResumeError("artifact contains malformed JSONL") from exc
+    return hashlib.sha256(bytes(prefix)).hexdigest()
+
+
+def _verify_resume_deviation() -> None:
+    target = _git_output("rev-parse", f"{RESUME_DEVIATION_TAG}^{{commit}}")
+    if target != RESUME_DEVIATION_COMMIT:
+        raise ResumeError("resume-deviation tag does not point to the frozen commit")
+    if _sha256(RESUME_DEVIATION_PATH) != RESUME_DEVIATION_SHA256:
+        raise ResumeError("resume-deviation document hash does not match")
+
+
 def _validate_manifest(manifest: Mapping[str, Any], plan: PilotPlan) -> str:
     if manifest.get("event_type") != "manifest":
         raise ResumeError("first artifact event must be a manifest")
@@ -525,74 +573,187 @@ def _validate_manifest(manifest: Mapping[str, Any], plan: PilotPlan) -> str:
     return run_id
 
 
-def _validate_completed_response(event: Mapping[str, Any], call: ConditionCall) -> None:
+def _validate_completed_response(
+    event: Mapping[str, Any], call: ConditionCall, *, require_instrumentation: bool
+) -> None:
     required = {
         "call_id": call.call_id,
         "scenario_id": call.scenario_id,
         "language": call.language,
         "condition": call.condition,
         "model": SARVAM_MODEL,
-        "finish_reason": "stop",
         "attempt": 1,
     }
     for key, value in required.items():
         if event.get(key) != value:
             raise ResumeError(f"completed response has invalid {key}")
+    if event.get("finish_reason") is not None and not isinstance(event.get("finish_reason"), str):
+        raise ResumeError("completed response has invalid finish_reason")
     if not isinstance(event.get("final_text"), str):
         raise ResumeError("completed response is missing final_text")
     if not isinstance(event.get("visible_reasoning_text"), str):
         raise ResumeError("completed response is missing visible_reasoning_text")
-    if not isinstance(event.get("usage"), Mapping) or not event["usage"]:
+    if not isinstance(event.get("usage"), Mapping):
         raise ResumeError("completed response is missing usage")
     if not isinstance(event.get("raw_provider_response"), Mapping):
         raise ResumeError("completed response is missing raw_provider_response")
     if not isinstance(event.get("grading_metrics"), Mapping):
         raise ResumeError("completed response is missing grading_metrics")
+    if require_instrumentation:
+        if not isinstance(event.get("final_text_available"), bool):
+            raise ResumeError("completed response is missing final_text_available")
+        if not isinstance(event.get("reasoning_available"), bool):
+            raise ResumeError("completed response is missing reasoning_available")
+        if not isinstance(event.get("reasoning_character_count"), int):
+            raise ResumeError("completed response is missing reasoning_character_count")
+        if not isinstance(event.get("reasoning_mode_mismatch"), bool):
+            raise ResumeError("completed response is missing reasoning_mode_mismatch")
 
 
-def _resume_state(plan: PilotPlan, events: list[dict[str, Any]]) -> tuple[str, tuple[ConditionCall, ...], float | None]:
+def _validate_consumed_failure(event: Mapping[str, Any], call: ConditionCall, run_id: str) -> None:
+    expected_keys = {
+        "event_type",
+        "run_id",
+        "call_id",
+        "scenario_id",
+        "language",
+        "condition",
+        "provider",
+        "attempt",
+        "timestamp",
+        "error_type",
+        "error_message",
+    }
+    if set(event) != expected_keys:
+        raise ResumeError("consumed failure does not exactly match the documented event")
+    expected = {
+        "event_type": "failure",
+        "run_id": run_id,
+        "call_id": CONSUMED_CALL_ID,
+        "scenario_id": call.scenario_id,
+        "language": call.language,
+        "condition": call.condition,
+        "provider": "sarvam",
+        "attempt": 1,
+        "error_type": CONSUMED_FAILURE_ERROR_TYPE,
+        "error_message": CONSUMED_FAILURE_ERROR_MESSAGE,
+    }
+    for key, value in expected.items():
+        if event.get(key) != value:
+            raise ResumeError("failure does not match the documented consumed empty-reasoning event")
+    if not isinstance(event.get("timestamp"), str) or not event["timestamp"]:
+        raise ResumeError("consumed failure is missing timestamp")
+
+
+def resume_authorization_event(plan: PilotPlan, *, run_id: str) -> dict[str, Any]:
+    return {
+        "event_type": "resume_authorization",
+        "run_id": run_id,
+        "deviation_tag": RESUME_DEVIATION_TAG,
+        "deviation_commit": RESUME_DEVIATION_COMMIT,
+        "deviation_sha256": RESUME_DEVIATION_SHA256,
+        "pre_resume_artifact_sha256": PRE_RESUME_ARTIFACT_SHA256,
+        "consumed_call_id": CONSUMED_CALL_ID,
+        "prior_attempts": PRE_RESUME_ATTEMPTS,
+        "prior_successes": PRE_RESUME_SUCCESSES,
+        "remaining_authorized_calls": MAXIMUM_NETWORK_ATTEMPTS - PRE_RESUME_ATTEMPTS,
+        "next_call_id": "P4:en:clean",
+        "maximum_total_attempts": MAXIMUM_NETWORK_ATTEMPTS,
+    }
+
+
+def _validate_resume_authorization(event: Mapping[str, Any], plan: PilotPlan, run_id: str) -> None:
+    expected = resume_authorization_event(plan, run_id=run_id)
+    if event != expected:
+        raise ResumeError("resume_authorization event does not match the frozen deviation")
+
+
+def _resume_state(plan: PilotPlan, events: list[dict[str, Any]]) -> ResumeState:
     run_id = _validate_manifest(events[0], plan)
-    calls_by_id = {call.call_id: call for call in plan.calls}
     index = 1
-    expected_index = 0
+    call_index = 0
+    pre_attempts = 0
+    pre_successes = 0
+    consumed = False
+    authorization_present = False
     last_start_epoch: float | None = None
 
     while index < len(events):
-        started = events[index]
-        if started.get("event_type") != "request_started":
+        event = events[index]
+        if event.get("event_type") == "resume_authorization":
+            if authorization_present or call_index != PRE_RESUME_ATTEMPTS:
+                raise ResumeError("resume_authorization is out of order")
+            if pre_attempts != PRE_RESUME_ATTEMPTS or pre_successes != PRE_RESUME_SUCCESSES or not consumed:
+                raise ResumeError("resume_authorization has invalid pre-resume state")
+            _validate_resume_authorization(event, plan, run_id)
+            authorization_present = True
+            index += 1
+            continue
+        if event.get("event_type") != "request_started":
             raise ResumeError("artifact contains an unknown or out-of-order event")
-        if expected_index >= len(plan.calls):
+        if call_index >= len(plan.calls):
             raise ResumeError("artifact exceeds the frozen 48-call limit")
-        call = plan.calls[expected_index]
-        if started.get("call_id") != call.call_id:
+        if call_index >= PRE_RESUME_ATTEMPTS and not authorization_present:
+            raise ResumeError("resumed request is missing resume_authorization")
+        call = plan.calls[call_index]
+        if event.get("call_id") != call.call_id:
             raise ResumeError("artifact request order does not match the fixed call order")
-        if started.get("run_id") != run_id or started.get("attempt") != 1:
+        if event.get("run_id") != run_id or event.get("attempt") != 1:
             raise ResumeError("request_started event is malformed")
-        if started.get("call_id") not in calls_by_id:
-            raise ResumeError("artifact contains an unknown call ID")
-        value = started.get("request_start_epoch")
+        value = event.get("request_start_epoch")
         if not isinstance(value, (int, float)):
             raise ResumeError("request_started event is missing request_start_epoch")
         last_start_epoch = float(value)
+        if not authorization_present:
+            pre_attempts += 1
         index += 1
         if index == len(events):
             raise ResumeError("request_started event has no terminal event; manual review is required")
         terminal = events[index]
         if terminal.get("run_id") != run_id or terminal.get("call_id") != call.call_id:
             raise ResumeError("terminal event does not match request_started event")
-        event_type = terminal.get("event_type")
-        if event_type == "response":
-            _validate_completed_response(terminal, call)
-        elif event_type in {"failure", "uncertain"}:
-            raise ResumeError(
-                "failure or uncertain event requires a documented protocol deviation and manual review"
-            )
+        if terminal.get("event_type") == "response":
+            _validate_completed_response(terminal, call, require_instrumentation=authorization_present)
+            if not authorization_present:
+                pre_successes += 1
+        elif terminal.get("event_type") == "failure":
+            if authorization_present or call.call_id != CONSUMED_CALL_ID or consumed:
+                raise ResumeError("failure event is not the documented consumed call")
+            _validate_consumed_failure(terminal, call, run_id)
+            consumed = True
         else:
-            raise ResumeError("artifact contains an unknown terminal event")
+            raise ResumeError("artifact contains an uncertain or unknown terminal event")
         index += 1
-        expected_index += 1
+        call_index += 1
 
-    return run_id, plan.calls[expected_index:], last_start_epoch
+    if pre_attempts != PRE_RESUME_ATTEMPTS or pre_successes != PRE_RESUME_SUCCESSES or not consumed:
+        raise ResumeError("artifact does not match the documented pre-resume attempt")
+    if call_index < PRE_RESUME_ATTEMPTS:
+        raise ResumeError("artifact does not contain the full documented pre-resume attempt")
+    return ResumeState(
+        run_id=run_id,
+        pending_calls=plan.calls[call_index:],
+        last_start_epoch=last_start_epoch,
+        prior_attempts=pre_attempts,
+        prior_successes=pre_successes,
+        total_attempts=call_index,
+        authorization_present=authorization_present,
+    )
+
+
+def inspect_resume(plan: PilotPlan, *, output_path: Path = PILOT_OUTPUT_PATH) -> ResumeState:
+    """Verify the only authorized consumed failure without mutating the artifact."""
+    _verify_resume_deviation()
+    if _pre_resume_artifact_sha256(output_path) != PRE_RESUME_ARTIFACT_SHA256:
+        raise ResumeError("pre-resume artifact hash does not match the frozen deviation")
+    return _resume_state(plan, _load_jsonl_artifact(output_path))
+
+
+def _ensure_resume_authorization(plan: PilotPlan, output_path: Path, state: ResumeState) -> bool:
+    if state.authorization_present:
+        return False
+    _append_event(output_path, resume_authorization_event(plan, run_id=state.run_id))
+    return True
 
 
 def run_resume(
@@ -601,17 +762,18 @@ def run_resume(
     runtime: Runtime,
     output_path: Path = PILOT_OUTPUT_PATH,
 ) -> int:
-    """Resume only a verified, completed prefix; never repeat an uncertain call."""
+    """Resume only the deviation-authorized suffix without repeating a call."""
     _require_live_credential()
-    events = _load_jsonl_artifact(output_path)
-    run_id, pending, last_start_epoch = _resume_state(plan, events)
+    state = inspect_resume(plan, output_path=output_path)
+    _ensure_resume_authorization(plan, output_path, state)
     return _execute_remaining(
         plan,
-        pending,
+        state.pending_calls,
         output_path=output_path,
-        run_id=run_id,
+        run_id=state.run_id,
         runtime=runtime,
-        last_start_epoch=last_start_epoch,
+        attempts_already_consumed=state.total_attempts,
+        last_start_epoch=state.last_start_epoch,
     )
 
 
@@ -634,6 +796,25 @@ def offline_preview(plan: PilotPlan) -> str:
     )
 
 
+def resume_preview(plan: PilotPlan, *, output_path: Path = PILOT_OUTPUT_PATH) -> str:
+    """Preview the only authorized resume state without credentials or transport."""
+    state = inspect_resume(plan, output_path=output_path)
+    next_call = state.pending_calls[0].call_id if state.pending_calls else "none"
+    return "\n".join(
+        (
+            "pilot runner: resume preview (no network calls)",
+            f"prior_attempts={state.prior_attempts}",
+            f"prior_successes={state.prior_successes}",
+            "consumed_failures=1",
+            f"remaining_calls={len(state.pending_calls)}",
+            f"next_call={next_call}",
+            f"maximum_total_attempts={MAXIMUM_NETWORK_ATTEMPTS}",
+            "resume_integrity=READY",
+            "network calls=0",
+        )
+    )
+
+
 def _require_live_credential() -> None:
     """Fail before any live artifact or provider action when the key is unusable."""
     api_key = os.environ.get("SARVAM_API_KEY")
@@ -650,11 +831,15 @@ def main(
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--execute-live-pilot", action="store_true")
     modes.add_argument("--resume-live-pilot", action="store_true")
+    modes.add_argument("--resume-preview", action="store_true")
     args = parser.parse_args(argv)
 
     live = args.execute_live_pilot or args.resume_live_pilot
     try:
         plan = build_plan(require_clean_worktree=live)
+        if args.resume_preview:
+            print(resume_preview(plan))
+            return 0
         if not live:
             print(offline_preview(plan))
             return 0

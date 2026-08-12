@@ -48,39 +48,56 @@ def build_request_body(call: ConditionCall) -> dict[str, Any]:
 
 
 def parse_chat_completion(payload: Mapping[str, Any], *, reasoning_mode: str) -> dict[str, Any]:
-    """Fail closed unless a complete, single-choice response has the required fields."""
+    """Parse a structurally valid completion without discarding unavailable text."""
     choices = payload.get("choices")
     if not isinstance(choices, list) or len(choices) != 1:
         raise SarvamResponseError("Sarvam response must contain exactly one choice")
     choice = choices[0]
     if not isinstance(choice, Mapping):
         raise SarvamResponseError("Sarvam response choice must be an object")
-    if choice.get("finish_reason") != "stop":
-        raise SarvamResponseError("Sarvam response finish_reason must be stop")
     message = choice.get("message")
     if not isinstance(message, Mapping):
         raise SarvamResponseError("Sarvam response choice message must be an object")
-    content = message.get("content")
-    if not isinstance(content, str) or not content.strip():
-        raise SarvamResponseError("Sarvam response content must be a non-empty string")
-    reasoning = message.get("reasoning_content")
-    if reasoning_mode == "on":
-        if not isinstance(reasoning, str) or not reasoning.strip():
-            raise SarvamResponseError("Sarvam think response requires non-empty reasoning_content")
-    elif reasoning not in (None, ""):
-        raise SarvamResponseError("Sarvam non-think response must not contain reasoning_content")
+
+    content_value = message.get("content")
+    if content_value is not None and not isinstance(content_value, str):
+        raise SarvamResponseError("Sarvam response content must be a string or null")
+    final_text_available = isinstance(content_value, str) and bool(content_value.strip())
+    final_text = content_value if final_text_available else ""
+
+    reasoning_value = message.get("reasoning_content")
+    if reasoning_value is not None and not isinstance(reasoning_value, str):
+        raise SarvamResponseError("Sarvam reasoning_content must be a string or null")
+    reasoning_available = isinstance(reasoning_value, str) and bool(reasoning_value.strip())
+    visible_reasoning_text = reasoning_value if reasoning_available else ""
+    reasoning_character_count = len(reasoning_value) if reasoning_available else 0
+    reasoning_mode_mismatch = (reasoning_mode == "on" and not reasoning_available) or (
+        reasoning_mode == "off" and reasoning_available
+    )
+
+    finish_reason = choice.get("finish_reason")
+    if finish_reason is not None and not isinstance(finish_reason, str):
+        raise SarvamResponseError("Sarvam response finish_reason must be a string or null")
     model = payload.get("model")
     if not isinstance(model, str) or not model:
         raise SarvamResponseError("Sarvam response model must be a non-empty string")
-    usage = payload.get("usage")
-    if not isinstance(usage, Mapping) or not usage:
-        raise SarvamResponseError("Sarvam response usage must be a non-empty object")
+    usage_value = payload.get("usage")
+    if usage_value is None:
+        usage: dict[str, Any] = {}
+    elif isinstance(usage_value, Mapping):
+        usage = dict(usage_value)
+    else:
+        raise SarvamResponseError("Sarvam response usage must be an object or null")
     return {
-        "final_text": content,
-        "visible_reasoning_text": reasoning if isinstance(reasoning, str) else "",
+        "final_text": final_text,
+        "final_text_available": final_text_available,
+        "visible_reasoning_text": visible_reasoning_text,
+        "reasoning_available": reasoning_available,
+        "reasoning_character_count": reasoning_character_count,
+        "reasoning_mode_mismatch": reasoning_mode_mismatch,
         "model": model,
-        "finish_reason": "stop",
-        "usage": dict(usage),
+        "finish_reason": finish_reason,
+        "usage": usage,
         "raw_provider_response": dict(payload),
     }
 

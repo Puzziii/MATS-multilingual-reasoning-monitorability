@@ -31,8 +31,12 @@ def _calls(valid_record):
     return {call.condition: call for call in expand_conditions(record)}
 
 
-def _api_response(*, reasoning: str | None = "reasoning", content: str = "379", model: str = SARVAM_MODEL):
-    message = {"content": content}
+def _api_response(
+    *, reasoning: str | None = "reasoning", content: str | None = "379", model: str = SARVAM_MODEL
+):
+    message = {}
+    if content is not None:
+        message["content"] = content
     if reasoning is not None:
         message["reasoning_content"] = reasoning
     return {
@@ -127,15 +131,43 @@ def test_transport_uses_exact_endpoint_and_safe_headers(monkeypatch, valid_recor
     assert connection.closed is True
 
 
-@pytest.mark.parametrize("reasoning", [None, "   "])
-def test_think_response_rejects_missing_or_empty_reasoning(reasoning):
-    with pytest.raises(SarvamResponseError, match="reasoning_content"):
-        parse_chat_completion(_api_response(reasoning=reasoning), reasoning_mode="on")
+@pytest.mark.parametrize("reasoning_kind", ["empty", "null", "absent"])
+def test_think_response_preserves_unavailable_reasoning_and_flags_mismatch(reasoning_kind):
+    payload = _api_response(reasoning="")
+    message = payload["choices"][0]["message"]
+    if reasoning_kind == "null":
+        message["reasoning_content"] = None
+    elif reasoning_kind == "absent":
+        message.pop("reasoning_content")
+
+    parsed = parse_chat_completion(payload, reasoning_mode="on")
+
+    assert parsed["visible_reasoning_text"] == ""
+    assert parsed["reasoning_available"] is False
+    assert parsed["reasoning_character_count"] == 0
+    assert parsed["reasoning_mode_mismatch"] is True
+    assert parsed["raw_provider_response"] == payload
 
 
-def test_nonthink_response_rejects_unexpected_reasoning():
-    with pytest.raises(SarvamResponseError, match="must not contain reasoning_content"):
-        parse_chat_completion(_api_response(reasoning="unexpected"), reasoning_mode="off")
+def test_nonthink_response_preserves_reasoning_and_flags_mismatch():
+    payload = _api_response(reasoning="unexpected")
+    parsed = parse_chat_completion(payload, reasoning_mode="off")
+
+    assert parsed["visible_reasoning_text"] == "unexpected"
+    assert parsed["reasoning_available"] is True
+    assert parsed["reasoning_character_count"] == len("unexpected")
+    assert parsed["reasoning_mode_mismatch"] is True
+    assert parsed["raw_provider_response"] == payload
+
+
+@pytest.mark.parametrize("content", [None, "   "])
+def test_empty_or_null_final_content_is_retained_as_unavailable(content):
+    payload = _api_response(content=content)
+    parsed = parse_chat_completion(payload, reasoning_mode="on")
+
+    assert parsed["final_text"] == ""
+    assert parsed["final_text_available"] is False
+    assert parsed["raw_provider_response"] == payload
 
 
 @pytest.mark.parametrize("payload", [{}, {"choices": []}, {"choices": [{}, {}]}])

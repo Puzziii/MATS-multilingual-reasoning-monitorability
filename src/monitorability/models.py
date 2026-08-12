@@ -60,7 +60,11 @@ class ConditionCall:
 @dataclass(frozen=True)
 class NormalizedResponse:
     final_text: str
+    final_text_available: bool
     visible_reasoning_text: str
+    reasoning_available: bool
+    reasoning_character_count: int
+    reasoning_mode_mismatch: bool
     model: str
     scenario_id: str
     language: Language

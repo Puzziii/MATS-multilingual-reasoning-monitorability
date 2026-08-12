@@ -218,7 +218,7 @@ def test_preflight_failure_blocks_before_provider_or_api_key_access(monkeypatch)
 
 @pytest.mark.parametrize(("mode", "credential"), [("--execute-live-pilot", None), ("--resume-live-pilot", " \t ")])
 def test_missing_or_blank_live_credential_blocks_before_artifact_or_provider(
-    monkeypatch, capsys, plan, mode, credential
+    monkeypatch, capsys, plan, mode, credential, tmp_path
 ):
     provider_calls = []
     run_calls = []
@@ -236,6 +236,8 @@ def test_missing_or_blank_live_credential_blocks_before_artifact_or_provider(
         run_calls.append((args, kwargs))
         raise AssertionError("artifact execution must not start without a credential")
 
+    output_path = tmp_path / "would-not-be-created.jsonl"
+    monkeypatch.setattr(pilot_run, "PILOT_OUTPUT_PATH", output_path)
     monkeypatch.setattr(pilot_run, "build_plan", fake_plan)
     monkeypatch.setattr(pilot_run, "run_fresh", forbidden_run)
     monkeypatch.setattr(pilot_run, "run_resume", forbidden_run)
@@ -249,7 +251,7 @@ def test_missing_or_blank_live_credential_blocks_before_artifact_or_provider(
     assert provider_calls == []
     assert run_calls == []
     assert append_calls == []
-    assert not pilot_run.PILOT_OUTPUT_PATH.exists()
+    assert not output_path.exists()
     assert "credential" not in capsys.readouterr().out.lower()
 
 
@@ -353,31 +355,59 @@ def test_schema_or_reasoning_mismatch_halts_after_one_attempt(plan, tmp_path):
     assert events[-1]["attempt"] == 1
 
 
-def test_unexpected_nonthink_reasoning_halts_after_one_attempt(plan, tmp_path):
-    output_path = tmp_path / "pilot_results.jsonl"
-
-    class UnexpectedReasoningProvider(FakeProvider):
-        def __call__(self, call):
-            self.calls.append(call)
-            raw = {
-                "model": SARVAM_MODEL,
-                "choices": [
-                    {
-                        "message": {"content": call.expected_benign_answer, "reasoning_content": "unexpected"},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"total_tokens": 2},
+def test_unexpected_nonthink_reasoning_is_persisted_and_flagged(plan):
+    call = plan.calls[0]
+    raw = {
+        "model": SARVAM_MODEL,
+        "choices": [
+            {
+                "message": {"content": call.expected_benign_answer, "reasoning_content": "unexpected"},
+                "finish_reason": "stop",
             }
-            return {"raw_provider_response": raw}
+        ],
+        "usage": {"total_tokens": 2},
+    }
 
-    provider = UnexpectedReasoningProvider()
-    runtime, _ = _runtime(provider)
-    with pytest.raises(pilot_run.PilotExecutionHalted):
-        pilot_run.run_fresh(plan, runtime=runtime, output_path=output_path, run_id_factory=lambda: "run-1")
-    events = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
-    assert len(provider.calls) == 1
-    assert events[-1]["event_type"] == "failure"
+    event = pilot_run._response_event(
+        {"raw_provider_response": raw},
+        call,
+        run_id="run-1",
+        timestamp="2026-08-12T06:00:00+00:00",
+        latency=0.0,
+    )
+
+    assert event["event_type"] == "response"
+    assert event["visible_reasoning_text"] == "unexpected"
+    assert event["reasoning_available"] is True
+    assert event["reasoning_mode_mismatch"] is True
+    assert event["raw_provider_response"] == raw
+
+
+@pytest.mark.parametrize("content", [None, "   "])
+def test_empty_final_content_is_persisted_and_graded_incorrect(plan, content):
+    call = plan.calls[0]
+    message = {}
+    if content is not None:
+        message["content"] = content
+    raw = {
+        "model": SARVAM_MODEL,
+        "choices": [{"message": message, "finish_reason": "stop"}],
+        "usage": {"total_tokens": 2},
+    }
+
+    event = pilot_run._response_event(
+        {"raw_provider_response": raw},
+        call,
+        run_id="run-1",
+        timestamp="2026-08-12T06:00:00+00:00",
+        latency=0.0,
+    )
+
+    assert event["event_type"] == "response"
+    assert event["final_text"] == ""
+    assert event["final_text_available"] is False
+    assert not any(event["grading_metrics"].values())
+    assert event["raw_provider_response"] == raw
 
 
 def test_transport_interruption_is_uncertain_and_blocks_resume(plan, tmp_path):
@@ -389,7 +419,7 @@ def test_transport_interruption_is_uncertain_and_blocks_resume(plan, tmp_path):
     assert events[-1]["event_type"] == "uncertain"
     resumed = FakeProvider()
     resume_runtime, _ = _runtime(resumed)
-    with pytest.raises(pilot_run.ResumeError, match="manual review"):
+    with pytest.raises(pilot_run.ResumeError, match="pre-resume artifact hash"):
         pilot_run.run_resume(plan, runtime=resume_runtime, output_path=output_path)
     assert resumed.calls == []
 
@@ -399,12 +429,12 @@ def test_unmatched_started_event_blocks_resume_without_repeating_call(plan, tmp_
     _write_events(output_path, [pilot_run.manifest_event(plan, run_id="run-1"), _started_event(plan, "run-1")])
     provider = FakeProvider()
     runtime, _ = _runtime(provider)
-    with pytest.raises(pilot_run.ResumeError, match="no terminal event"):
+    with pytest.raises(pilot_run.ResumeError, match="pre-resume artifact hash"):
         pilot_run.run_resume(plan, runtime=runtime, output_path=output_path)
     assert provider.calls == []
 
 
-def test_resume_skips_completed_call_and_only_invokes_remaining_calls(plan, tmp_path):
+def test_resume_rejects_any_artifact_other_than_the_documented_partial_attempt(plan, tmp_path):
     output_path = tmp_path / "pilot_results.jsonl"
     _write_events(
         output_path,
@@ -416,10 +446,9 @@ def test_resume_skips_completed_call_and_only_invokes_remaining_calls(plan, tmp_
     )
     provider = FakeProvider()
     runtime, _ = _runtime(provider)
-    assert pilot_run.run_resume(plan, runtime=runtime, output_path=output_path) == 47
-    assert len(provider.calls) == 47
-    assert provider.calls[0].call_id == plan.calls[1].call_id
-    assert plan.calls[0].call_id not in {call.call_id for call in provider.calls}
+    with pytest.raises(pilot_run.ResumeError, match="pre-resume artifact hash"):
+        pilot_run.run_resume(plan, runtime=runtime, output_path=output_path)
+    assert provider.calls == []
 
 
 def test_corrupt_duplicate_or_unknown_artifact_events_block_resume(plan, tmp_path):
