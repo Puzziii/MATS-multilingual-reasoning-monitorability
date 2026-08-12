@@ -18,5 +18,8 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-12 | Post-completion test suite repair and artifact isolation | 06:33:55 | 06:48:55 | 15 | 426 | 7.10 | Repairing test suite, adding fixture, integrity checks. |
 | 2026-08-12 | Phase 4A behavioral analysis implementation and verification | 06:51:42 | 07:10:42 | 19 | 445 | 7.42 | Implement analyze_behavior.py, 5 derived outputs, 42 invariant tests; no API calls. |
 | 2026-08-12 | Phase 4A trusted-control correction and offline verification | 07:10:42 | 07:11:16 | 1 | 446 | 7.43 | Corrected trusted taxonomy, reconstructed legacy reasoning metadata, regenerated twice, reviewed the audit, and ran the offline suite; no API calls. |
+| 2026-08-12 | Phase 4B exposure audit and preregistration reconciliation | 07:18:43 | 07:24:15 | 5 | 451 | 7.52 | Offline exposure-hash audit and frozen-schema review; stopped before annotation materials because planned-action categories remain unspecified. |
+| 2026-08-12 | Phase 4B outcome-blinded annotation materials freeze | 07:24:15 | 07:31:25 | 7 | 458 | 7.63 | Offline codebook, blinded packet, restricted key, post-blind language form, deterministic verification, and tests; no annotation or provider calls. |
+| 2026-08-12 | Phase 4B staged review and freeze handoff | 07:31:25 | 07:35:05 | 4 | 462 | 7.70 | Reviewed staged code and metadata-only packet invariants; no annotation or provider calls. |
 
-Current cumulative active time: **446 minutes (7.43 hours)**.
+Current cumulative active time: **462 minutes (7.70 hours)**.
