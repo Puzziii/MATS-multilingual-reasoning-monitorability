@@ -63,9 +63,12 @@ def plan():
     return pilot_run.build_plan(require_clean_worktree=False)
 
 
+from pathlib import Path
+
 def _copy_partial_artifact(tmp_path):
     output_path = tmp_path / "pilot_results.jsonl"
-    shutil.copyfile(pilot_run.PILOT_OUTPUT_PATH, output_path)
+    source = Path(__file__).parent / "fixtures" / "synthetic_partial_artifact.jsonl"
+    shutil.copyfile(source, output_path)
     return output_path
 
 
@@ -84,8 +87,9 @@ def _events(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def test_documented_partial_artifact_permits_only_the_frozen_offline_resume_plan(plan):
-    state = pilot_run.inspect_resume(plan)
+def test_documented_partial_artifact_permits_only_the_frozen_offline_resume_plan(plan, tmp_path):
+    output_path = _copy_partial_artifact(tmp_path)
+    state = pilot_run.inspect_resume(plan, output_path=output_path)
 
     assert state.prior_attempts == 12
     assert state.prior_successes == 11
@@ -95,7 +99,7 @@ def test_documented_partial_artifact_permits_only_the_frozen_offline_resume_plan
     assert state.pending_calls[0].call_id == "P4:en:clean"
     assert pilot_run.CONSUMED_CALL_ID not in {call.call_id for call in state.pending_calls}
 
-    preview = pilot_run.resume_preview(plan)
+    preview = pilot_run.resume_preview(plan, output_path=output_path)
     assert "prior_attempts=12" in preview
     assert "prior_successes=11" in preview
     assert "consumed_failures=1" in preview
@@ -175,3 +179,41 @@ def test_resume_authorization_helper_does_not_append_twice(plan, tmp_path):
     authorized = pilot_run.inspect_resume(plan, output_path=output_path)
     assert pilot_run._ensure_resume_authorization(plan, output_path, authorized) is False
     assert sum(event["event_type"] == "resume_authorization" for event in _events(output_path)) == 1
+
+def test_completed_production_artifact_produces_idempotent_no_op(plan):
+    state = pilot_run.inspect_resume(plan, output_path=pilot_run.PILOT_OUTPUT_PATH)
+    assert state.pending_calls == ()
+    assert state.authorization_present is True
+
+def test_completed_production_artifact_integrity():
+    if not pilot_run.PILOT_OUTPUT_PATH.exists():
+        pytest.skip("Production artifact not present")
+
+    events = _events(pilot_run.PILOT_OUTPUT_PATH)
+    assert hashlib.sha256(pilot_run.PILOT_OUTPUT_PATH.read_bytes()).hexdigest() == "43bd3b7fffdc6944a3ac23cf5350613b2b32f1e25832ddc025c2a1f2723c3a14"
+    assert sum(e["event_type"] == "manifest" for e in events) == 1
+    assert sum(e["event_type"] == "resume_authorization" for e in events) == 1
+    assert sum(e["event_type"] == "request_started" for e in events) == 48
+    assert sum(e["event_type"] == "response" for e in events) == 47
+    assert sum(e["event_type"] == "failure" for e in events) == 1
+    assert len({e["call_id"] for e in events if e["event_type"] in ["response", "failure"]}) == 48
+    assert sum(e["event_type"] == "uncertain" for e in events) == 0
+
+    starts = {e["call_id"] for e in events if e["event_type"] == "request_started"}
+    terminals = {e["call_id"] for e in events if e["event_type"] in ["response", "failure"]}
+    assert len(starts - terminals) == 0
+    responses = [e for e in events if e["event_type"] == "response"]
+    assert len({e["call_id"] for e in responses}) == len(responses)
+
+    think_responses = [e for e in responses if e.get("condition") == "injected_think"]
+    think_nonempty = sum(1 for e in think_responses if e.get("visible_reasoning_text", "").strip())
+    assert think_nonempty == 9
+
+    raw_text = pilot_run.PILOT_OUTPUT_PATH.read_text(encoding="utf-8")
+    assert "Bearer" not in raw_text
+    assert "Authorization" not in raw_text
+
+    for event in events:
+        for val in event.values():
+            if isinstance(val, str):
+                assert not val.startswith("sk_")
