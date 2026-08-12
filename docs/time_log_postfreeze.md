@@ -16,5 +16,7 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-12 | Guarded pilot runner v1.2 implementation and offline verification | 05:41:33 | 06:06:14 | 24 | 401 | 6.68 | Exact active work; no API or provider calls; passive waiting excluded. |
 | 2026-08-12 | Pilot attempt 2 resume live execution and integrity audit | 06:16:30 | 06:28:20 | 10 | 411 | 6.85 | Resumed pilot run, confirmed integrity; passive API waiting excluded. |
 | 2026-08-12 | Post-completion test suite repair and artifact isolation | 06:33:55 | 06:48:55 | 15 | 426 | 7.10 | Repairing test suite, adding fixture, integrity checks. |
+| 2026-08-12 | Phase 4A behavioral analysis implementation and verification | 06:51:42 | 07:10:42 | 19 | 445 | 7.42 | Implement analyze_behavior.py, 5 derived outputs, 42 invariant tests; no API calls. |
+| 2026-08-12 | Phase 4A trusted-control correction and offline verification | 07:10:42 | 07:11:16 | 1 | 446 | 7.43 | Corrected trusted taxonomy, reconstructed legacy reasoning metadata, regenerated twice, reviewed the audit, and ran the offline suite; no API calls. |
 
-Current cumulative active time: **426 minutes (7.10 hours)**.
+Current cumulative active time: **446 minutes (7.43 hours)**.
