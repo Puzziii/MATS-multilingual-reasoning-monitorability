@@ -23,5 +23,6 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-12 | Phase 4B staged review and freeze handoff | 07:31:25 | 07:35:05 | 4 | 462 | 7.70 | Reviewed staged code and metadata-only packet invariants; no annotation or provider calls. |
 
 | 2026-08-13 | Phase 4B manual annotation and structural validation | 07:35:05 | 07:53:05 | 18 | 480 | 8.00 | Manual annotation of 12 rows and strict structural invariant testing. |
+| 2026-08-13 | Reasoning-language annotation and focused post-blind validation | 12:08:51 | 12:12:19 | 3 | 483 | 8.05 | Classified visible reasoning language only, completed the post-blind form, and ran focused structural validation; no key access or outcome analysis. |
 
-Current cumulative active time: **480 minutes (8.00 hours)**.
+Current cumulative active time: **483 minutes (8.05 hours)**.
