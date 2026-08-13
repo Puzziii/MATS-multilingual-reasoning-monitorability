@@ -29,4 +29,6 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-13 | Phase 5C guarded follow-up runner preparation | 13:09:00 | 13:20:53 | 11 | 524 | 8.73 | Added offline-first guarded runner, focused mocked tests, and zero-network preview; no provider calls or live artifact. |
 | 2026-08-13 | Phase 5E follow-up continuation deviation and runner preparation | 13:41:00 | 13:50:43 | 9 | 533 | 8.88 | Verified isolated failed and non-study smoke artifacts, froze the 47-call recovery deviation, added guarded continuation tests, and ran only offline checks; no provider calls or continuation artifact. |
 
-Current cumulative active time: **533 minutes (8.88 hours)**.
+| 2026-08-13 | Phase 5F live follow-up continuation and integrity audit | 14:00:00 | 14:05:00 | 5 | 538 | 8.97 | Successfully executed 47 continuation calls and performed metadata-only audit. |
+
+Current cumulative active time: **538 minutes (8.97 hours)**.
