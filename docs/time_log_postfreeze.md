@@ -25,5 +25,6 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-13 | Phase 4B manual annotation and structural validation | 07:35:05 | 07:53:05 | 18 | 480 | 8.00 | Manual annotation of 12 rows and strict structural invariant testing. |
 | 2026-08-13 | Reasoning-language annotation and focused post-blind validation | 12:08:51 | 12:12:19 | 3 | 483 | 8.05 | Classified visible reasoning language only, completed the post-blind form, and ran focused structural validation; no key access or outcome analysis. |
 | 2026-08-13 | Phase 4C deterministic unblinded reasoning-monitorability analysis | 12:13:00 | 12:23:26 | 10 | 493 | 8.22 | Verified frozen checkpoints, performed authorized deterministic join, generated aggregate outputs and figures twice, and ran focused plus full tests; no provider calls. |
+| 2026-08-13 | Phase 5A and 5B protocol freeze and tests | 12:35:00 | 12:55:00 | 20 | 513 | 8.55 | Finalized follow-up scenarios, ran tests, and froze protocol v1.0. |
 
-Current cumulative active time: **493 minutes (8.22 hours)**.
+Current cumulative active time: **513 minutes (8.55 hours)**.
