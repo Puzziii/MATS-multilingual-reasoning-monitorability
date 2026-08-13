@@ -22,4 +22,6 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 | 2026-08-12 | Phase 4B outcome-blinded annotation materials freeze | 07:24:15 | 07:31:25 | 7 | 458 | 7.63 | Offline codebook, blinded packet, restricted key, post-blind language form, deterministic verification, and tests; no annotation or provider calls. |
 | 2026-08-12 | Phase 4B staged review and freeze handoff | 07:31:25 | 07:35:05 | 4 | 462 | 7.70 | Reviewed staged code and metadata-only packet invariants; no annotation or provider calls. |
 
-Current cumulative active time: **462 minutes (7.70 hours)**.
+| 2026-08-13 | Phase 4B manual annotation and structural validation | 07:35:05 | 07:53:05 | 18 | 480 | 8.00 | Manual annotation of 12 rows and strict structural invariant testing. |
+
+Current cumulative active time: **480 minutes (8.00 hours)**.
