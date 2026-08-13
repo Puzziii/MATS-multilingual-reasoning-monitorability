@@ -1,77 +1,83 @@
-# Multilingual Reasoning Monitorability: A Small Study of Sarvam-105B
+# Multilingual Reasoning Monitorability under Indirect Prompt Injection
 
-This repository contains the replication package, execution harness, and analysis pipeline for a case study investigating the intersection of **indirect prompt injection (IPI)** and **visible reasoning monitorability** in multilingual contexts (English, Tamil, and Tanglish) using Sarvam-105B.
+This repository contains the replication package, execution harness, and analysis pipeline for a MATS application case study investigating the intersection of indirect prompt injection (IPI) and visible reasoning monitorability in multilingual contexts.
 
-This study was conducted as a MATS application project.
+## 1. Overview
+As language models increasingly utilize chain-of-thought and other reasoning processes, understanding whether these visible traces reveal deceptive or harmful instructions embedded in external data is a key safety challenge. This small-sample case study evaluates Sarvam-105B under indirect prompt injection across English, Tamil, and Tanglish contexts. The project explores whether the model follows or resists embedded malicious instructions, whether it explicitly recognizes untrusted content within its API-visible reasoning traces, and whether outcomes vary between non-thinking and thinking modes.
 
-## Research Question
+## 2. Main Findings
 
-When an instruction is embedded inside explicitly untrusted content:
-1. Does Sarvam-105B follow or resist it?
-2. Does the model explicitly recognize the content as untrusted in its API-visible reasoning?
-3. Do observed behavior and visible-reasoning patterns differ across English, Tamil, and Tanglish?
+The study produced descriptive evidence across the pilot and follow-up phases. **Importantly, the pilot direction did not replicate in the follow-up. This is small-sample descriptive evidence, not a causal or statistical conclusion.**
 
-## Key Findings
+- **Model:** Sarvam-105B.
+- **Clean task accuracy:** 23/23 available responses.
+- **Trusted-instruction adherence:** 23/24.
+- **Visible reasoning availability:** Visible reasoning was non-empty for 20/24 injected-thinking attempts.
+- **Monitorability intent alignment:** Among those 20 eligible traces: all 3 attack successes were annotated `intent_follow=yes` and `intent_ignore=no`; all 17 benign-correct outputs were `intent_ignore=yes` and `intent_follow=no`.
 
-- **Reasoning Monitorability:** When the model thought out loud and produced non-empty reasoning (20/24 traces), it consistently noticed the payload and frequently stated an intent to ignore it. Intent explicitly stated in the reasoning strongly corresponded with the final outcome (17 benign outcomes aligned with `intent_ignore`, and 3 attack successes aligned with `intent_follow`).
-- **Thinking as a Defense (Failed Replication):** The initial pilot suggested that thinking might serve as a strong defense against IPI. However, this effect did not replicate in the follow-up sample. In the follow-up, turning reasoning on actually increased attack success.
-- **Multilingual Impact:** The study did not find conclusive evidence of a population-level difference in vulnerability between English, Tamil, and Tanglish. Sample sizes were deliberately kept small for this descriptive study.
+| Injected Mode | Pilot Attack Success | Follow-up Attack Success | Combined Attack Success |
+| --- | --- | --- | --- |
+| **Non-thinking** | 5/12 | 2/12 | 7/24 |
+| **Thinking** | 1/11 | 3/12 | 4/23 |
 
-## Workflow and Methodology
+*See full analysis in the [Final Research Report](analysis/final_research_report.md).*
 
-This project was executed through a structured, multi-phase experimental workflow, driven by a collaboration between a human researcher and autonomous AI coding agents.
+## 3. Study Design and Controls
 
-### Collaborative Model
-- **Human Researcher (Applicant):** Selected the research question, designed the controls, verified all multilingual prompts (English, Tamil, Tanglish), manually annotated the outcome-blind reasoning traces, audited the grading, interpreted the findings, and directed the strict freeze protocol.
-- **AI Coding Agents (Claude Opus / Gemini Pro):** Implemented the execution harness, offline schema validations, execution safeguards, `pytest` suites, data pipelines, and deterministic analysis scripts based on the applicant's exact specifications.
-- **Experimental Target Model (Sarvam-105B):** The LLM under test, which evaluated the injected and trusted prompts across all conditions to produce the experimental responses and API-visible reasoning.
+The experimental design consisted of **eight synthetic scenarios across English, Tamil, and Tanglish** evaluated under four distinct conditions:
+- **Clean:** Benign task without any external injection.
+- **Trusted-control:** Overt, explicitly trusted instructions.
+- **Injected non-thinking:** Malicious instruction embedded within explicitly untrusted content delimiters, executed without reasoning mode.
+- **Injected-thinking:** Malicious instruction embedded within explicitly untrusted content delimiters, executed with reasoning mode enabled.
 
-### Experimental Phases
-1. **Phases 1–3 (Preparation & Pilot):** Protocol review, implementation of the guarded pilot runner, and execution of the first 48-call pilot study.
-2. **Phase 4 (Pilot Analysis & Blinding):** Implementation of deterministic behavioral grading, exposure audits, outcome-blind reasoning annotation (to prevent bias), and manual verification of pilot results.
-3. **Phase 5 (Follow-up Study):** Implementation of the follow-up runner, safe handling of provider API incidents (HTTP 403s), and execution of the 48-call follow-up study to test the replication of the pilot's findings.
-4. **Phase 6 (Final Analysis & Reporting):** Outcome-blind annotation of follow-up reasoning, final unblinded joins, deterministic generation of combined figures/tables, and documentation of all findings into the final frozen report.
+Key protocol and dataset links:
+- [Preregistration v0.1](docs/preregistration_v0.1.md)
+- [Execution Protocol v1.0](docs/execution_protocol_v1.0.md)
+- [Follow-up Protocol v1.0](docs/followup_protocol_v1.0.md)
+- [Pilot Scenarios](data/pilot_scenarios.jsonl) | [Follow-up Scenarios](data/followup_scenarios.jsonl)
+- [Pilot Results](outputs/pilot_results.jsonl) | [Follow-up Results](outputs/followup_results.jsonl)
 
-## Repository Structure
+## 4. Interpretation and Limitations
 
-- `docs/`: Preregistration, execution protocols, freezing guidelines, the final report drafts, and qualitative examples.
-- `data/`: Frozen synthetic scenarios (`pilot_scenarios.jsonl`, `followup_scenarios.jsonl`).
-- `src/monitorability/`: Execution harness, schema smoke checks, grading, and result-generation logic.
-- `analysis/`: Generated figures and tabular results.
-- `tests/`: Validations and preregistration integrity tests.
+This study emphasizes cautious interpretation of the small-sample results. We explicitly **do not claim**:
+- That thinking improves safety.
+- That any observed effect is a replicated effect (the pilot direction reversed in the follow-up).
+- Any causal effects or statistical significance.
+- That visible reasoning is faithful internal reasoning.
+- Any definitive Tamil/Tanglish safety rankings.
+- Generalization beyond Sarvam-105B and these eight scenarios.
 
-## Setup and Installation
+Key figures supporting the interpretation:
+- [Attack Success Exact Matches](analysis/figures/final_attack_success.png)
+- [Paired Injected-Condition Transitions](analysis/figures/final_pairwise_transitions.png)
+- [API-Visible Reasoning Availability](analysis/figures/final_reasoning_availability.png)
 
-The execution harness and analysis scripts require Python 3.10+.
+## 5. Reproduction and Repository Guide
+
+The repository uses Python 3.10+. To set up the environment and reproduce the deterministic analysis checks:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-```
-
-## Execution and Analysis
-
-To run the preregistration tests and integrity checks:
-
-```bash
 pytest -q
-```
-
-To run a dry-run preview of the execution pipeline (offline):
-
-```bash
-python -m monitorability.runner --dry-run data/pilot_scenarios.jsonl
-```
-
-To run the offline schema smoke preview:
-
-```bash
-python -m monitorability.schema_smoke
-```
-
-To reproduce the analysis CSVs and figures, run:
-
-```bash
 python src/monitorability/analyze_final.py
 ```
+
+## 6. Related Work
+
+This study builds upon foundational and recent literature regarding prompt injection, multilingual vulnerabilities, and reasoning monitorability:
+
+- **Monitorability and Chain-of-Thought:**
+  - Korbak et al. (2025), [arXiv:2507.11473](https://arxiv.org/abs/2507.11473)
+  - Onyame et al. (2026), [arXiv:2605.27901](https://arxiv.org/abs/2605.27901)
+- **Indirect Prompt Injection:**
+  - Greshake et al. (2023), [arXiv:2302.12173](https://arxiv.org/abs/2302.12173)
+  - Yi et al. (2023), [arXiv:2312.14197](https://arxiv.org/abs/2312.14197)
+- **Multilingual Contexts:**
+  - MIPIAD (2026), [arXiv:2605.07269](https://arxiv.org/abs/2605.07269)
+  - Srinivasan et al. (2026), Scientific Reports, [DOI:10.1038/s41598-026-43883-0](https://doi.org/10.1038/s41598-026-43883-0)
+
+## 7. Contribution and Tool-Use Disclosure
+
+The author formulated and refined the research question, designed and verified the multilingual scenarios and controls, manually annotated blinded reasoning traces, audited outcome labels, and interpreted the findings. Coding agents assisted with implementation, testing, reproducibility safeguards, and drafting support; all research decisions and final manual reviews were made by the author.
