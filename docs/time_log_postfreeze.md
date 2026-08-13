@@ -31,5 +31,7 @@ This ledger begins after preregistration freeze. Passive waiting is excluded fro
 
 | 2026-08-13 | Phase 5F live follow-up continuation and integrity audit | 14:00:00 | 14:05:00 | 5 | 538 | 8.97 | Successfully executed 47 continuation calls and performed metadata-only audit. |
 | 2026-08-13 | Phase 6A follow-up outcome-blinded annotation materials freeze | 14:15:00 | 14:25:00 | 10 | 548 | 9.13 | Prepared follow-up reasoning annotation blinded packet, restricted key, post-blind language form, deterministic verification, and focused tests. |
+| 2026-08-13 | Final follow-up and combined behavioral/reasoning analysis | 14:26:00 | 14:37:59 | 11 | 559 | 9.32 | Deterministic offline grading, unblinded reasoning joins, pilot/follow-up/combined tables and figures, privacy scan, focused tests, and one complete pytest run; no provider calls. |
+| 2026-08-13 | Final manual review and research freeze validation | 14:38:00 | 14:56:11 | 18 | 577 | 9.62 | Manually reviewed 12 grading rows and six fixed-seed qualitative examples, verified deterministic regeneration and frozen inputs, and ran focused plus full tests; no provider calls. |
 
-Current cumulative active time: **548 minutes (9.13 hours)**.
+Current cumulative active time: **577 minutes (9.62 hours)**.
