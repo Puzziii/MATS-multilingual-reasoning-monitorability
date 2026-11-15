@@ -64,6 +64,16 @@ pytest -q
 python src/monitorability/analyze_final.py
 ```
 
+### 5.1 Exploratory Kannada/Kanglish extension (separate from the frozen study)
+
+`data/kannada_extension_scenarios.jsonl` and `data/kanglish_extension_scenarios.jsonl` are an **exploratory extension**, not part of the frozen pilot or follow-up and not a result of the paper. They are synthetic, researcher-authored Kannada and Kanglish adaptations of follow-up scenarios P5–P8 plus a localized P6 variant (P6-LOC). They are structurally validated only: the language has **not** been reviewed by a fluent reviewer and `human_verified` is `false`. No claim about monitorability, language safety, or reasoning-mode effects is made. See `docs/kannada_kanglish_extension_protocol_v1.0.md`, `docs/kannada_kanglish_extension_deviation_v1.1.md`, and `docs/kannada_kanglish_language_review_v1.0.md`.
+
+```bash
+python validate_extension.py            # errors block a run; warnings are reviewer items
+python run_kannada_extension.py --dry-run
+python summarize_extension.py outputs/kannada_extension_results.jsonl
+```
+
 ## 6. Related Work
 
 This study builds upon foundational and recent literature regarding prompt injection, multilingual vulnerabilities, and reasoning monitorability:
